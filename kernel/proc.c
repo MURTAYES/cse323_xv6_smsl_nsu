@@ -101,7 +101,15 @@ allocpid()
 
   return pid;
 }
+// Simple random number generator for lottery scheduling
+static unsigned long randstate = 1;
 
+unsigned int
+random(void)
+{
+  randstate = randstate * 1664525 + 1013904223;
+  return randstate;
+}
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -124,7 +132,10 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-
+  // Initialize lottery scheduler fields
+  p->tickets = 1;              // Default 1 ticket
+  p->original_tickets = 1;
+  p->waiting_for = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -414,6 +425,62 @@ kwait(uint64 addr)
   }
 }
 
+// Donate tickets when process waits for another
+void
+donate_tickets(struct proc *waiting, struct proc *holding)
+{
+  if(holding == 0 || waiting == 0)
+    return;
+  
+  // Don't try to lock if it's the same process
+  if(waiting == holding)
+    return;
+    
+  // Lock in consistent order to avoid deadlock
+  struct proc *first = waiting;
+  struct proc *second = holding;
+  if(waiting > holding) {
+    first = holding;
+    second = waiting;
+  }
+  
+  acquire(&first->lock);
+  acquire(&second->lock);
+  
+  // Transfer tickets
+  holding->tickets += waiting->tickets;
+  waiting->tickets = 0;
+  waiting->waiting_for = holding;
+  
+  release(&second->lock);
+  release(&first->lock);
+}
+
+// Return donated tickets when dependency is resolved
+void
+return_tickets(struct proc *p)
+{
+  struct proc *donor;
+  
+  // Don't acquire p->lock here - caller should hold it
+  
+  // Find all processes waiting for this one
+  for(donor = proc; donor < &proc[NPROC]; donor++) {
+    if(donor == p)
+      continue;  // Skip self
+      
+    acquire(&donor->lock);
+    if(donor->waiting_for == p) {
+      // Return tickets
+      donor->tickets = donor->original_tickets;
+      if(p->tickets >= donor->original_tickets)
+        p->tickets -= donor->original_tickets;
+      donor->waiting_for = 0;
+    }
+    release(&donor->lock);
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -426,38 +493,49 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-
+  
   c->proc = 0;
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
+    // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    intr_off();
-
-    int found = 0;
+    
+    // Calculate total tickets of RUNNABLE processes
+    int total_tickets = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+        total_tickets += p->tickets;
       }
       release(&p->lock);
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      asm volatile("wfi");
+    
+    // If there are runnable processes, pick a winner
+    if(total_tickets > 0) {
+      int winning_ticket = random() % total_tickets;
+      int ticket_sum = 0;
+      
+      // Find the winning process
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          ticket_sum += p->tickets;
+          
+          if(ticket_sum > winning_ticket) {
+            // This is the winner! Schedule it.
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+            
+            // Process is done running for now.
+            c->proc = 0;
+            
+            // Release lock AFTER context switch
+            release(&p->lock);
+            break;
+          }
+        }
+        release(&p->lock);
+      }
     }
   }
 }
@@ -580,6 +658,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        return_tickets(p);  
       }
       release(&p->lock);
     }

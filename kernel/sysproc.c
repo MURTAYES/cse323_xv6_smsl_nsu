@@ -107,3 +107,29 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_settickets(void)
+{
+  int n;
+  
+  argint(0, &n);
+  
+  if(n < 1)
+    return -1;
+  
+  struct proc *p = myproc();
+  acquire(&p->lock);
+  p->tickets = n;
+  p->original_tickets = n;
+  release(&p->lock);
+  printf("PID %d: set tickets to %d\n", p->pid, n);
+  return 0;
+}
+
+uint64
+sys_yield(void)
+{
+  yield();
+  return 0;
+}

@@ -104,4 +104,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  // Lottery scheduler fields
+  int tickets;                 // Number of tickets for lottery
+  int original_tickets;        // Original ticket count (before donation)
+  struct proc *waiting_for;    // Process this one is waiting for  
+
 };
