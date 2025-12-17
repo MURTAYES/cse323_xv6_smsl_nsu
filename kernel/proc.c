@@ -56,6 +56,8 @@ procinit(void)
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
+  shminit();
+  set_random_seed();
 }
 
 // Must be called with interrupts disabled,
@@ -103,7 +105,12 @@ allocpid()
 }
 // Simple random number generator for lottery scheduling
 static unsigned long randstate = 1;
-
+void
+set_random_seed(void)
+{
+  // Seed with some value (in real system, use timer)
+  randstate = 1;
+}
 unsigned int
 random(void)
 {
@@ -136,6 +143,14 @@ found:
   p->tickets = 1;              // Default 1 ticket
   p->original_tickets = 1;
   p->waiting_for = 0;
+  
+  
+  //shared memory
+  for(int i = 0; i < MAX_SHM_SEGMENTS; i++){
+    p->shm_addr[i] = 0;
+    p->shm_ids[i] = -1;
+  }
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -179,6 +194,14 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  // Detach all shared memory segments
+  for(int i = 0; i < MAX_SHM_SEGMENTS; i++){
+    if(p->shm_ids[i] >= 0){
+      shm_decref(p->shm_ids[i]);
+      p->shm_addr[i] = 0;
+      p->shm_ids[i] = -1;
+    }
+  }
   p->state = UNUSED;
 }
 

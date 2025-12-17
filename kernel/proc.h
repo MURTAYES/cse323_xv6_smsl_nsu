@@ -17,7 +17,7 @@ struct context {
   uint64 s10;
   uint64 s11;
 };
-
+#define MAX_SHM_SEGMENTS 16
 // Per-CPU state.
 struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
@@ -108,5 +108,8 @@ struct proc {
   int tickets;                 // Number of tickets for lottery
   int original_tickets;        // Original ticket count (before donation)
   struct proc *waiting_for;    // Process this one is waiting for  
+  // ADD THESE FOR SHARED MEMORY:
+  void *shm_addr[MAX_SHM_SEGMENTS];  // Virtual addresses of attached segments
+  int shm_ids[MAX_SHM_SEGMENTS];     // Shared memory IDs attached
 
 };

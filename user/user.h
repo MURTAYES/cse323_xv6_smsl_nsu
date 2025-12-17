@@ -40,6 +40,9 @@ void *memcpy(void *, const void *, uint);
 char* sbrk(int);
 char* sbrklazy(int);
 int yield(void);
+int shmget(int key, int size);
+void* shmat(int shmid);
+int shmdt(void *addr);
 // printf.c
 void fprintf(int, const char*, ...) __attribute__ ((format (printf, 2, 3)));
 void printf(const char*, ...) __attribute__ ((format (printf, 1, 2)));

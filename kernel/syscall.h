@@ -22,3 +22,6 @@
 #define SYS_close  21
 #define SYS_settickets 22
 #define SYS_yield  23
+#define SYS_shmget     24
+#define SYS_shmat      25
+#define SYS_shmdt      26

@@ -101,7 +101,10 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-
+unsigned int    random(void);
+void            set_random_seed(void);
+void            donate_tickets(struct proc*, struct proc*);
+void            return_tickets(struct proc*);
 // swtch.S
 void            swtch(struct context*, struct context*);
 
@@ -135,7 +138,12 @@ void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
-
+// shm.c
+void            shminit(void);
+int             shmalloc(int, uint);
+struct shm_segment* shmget_segment(int);
+void            shm_incref(int);
+void            shm_decref(int);
 // trap.c
 extern uint     ticks;
 void            trapinit(void);

@@ -44,3 +44,6 @@ entry("pause");
 entry("uptime");
 entry("settickets");
 entry("yield");
+entry("shmget");
+entry("shmat");
+entry("shmdt");
